@@ -34,7 +34,7 @@ MergeTreeReadPool::MergeTreeReadPool(
         std::reverse(std::begin(part_ranges.ranges), std::end(part_ranges.ranges));
 
     /// parts don't contain duplicate MergeTreeDataPart's.
-    const auto per_part_sum_marks = fillPerPartInfo(parts, check_columns);
+    const auto per_part_sum_marks = fillPerPartInfo(parts, check_columns, /* read_in_pk_order */ true);
     fillPerThreadInfo(threads, sum_marks, per_part_sum_marks, parts, min_marks_for_concurrent_read);
 }
 
@@ -198,7 +198,7 @@ void MergeTreeReadPool::profileFeedback(const ReadBufferFromFileBase::ProfileInf
 
 
 std::vector<size_t> MergeTreeReadPool::fillPerPartInfo(
-    RangesInDataParts & parts, const bool check_columns)
+    RangesInDataParts & parts, const bool check_columns, const bool read_in_pk_order)
 {
     std::vector<size_t> per_part_sum_marks;
     Block sample_block = data.getSampleBlock();
@@ -277,7 +277,13 @@ std::vector<size_t> MergeTreeReadPool::fillPerPartInfo(
 
         per_part_should_reorder.push_back(should_reoder);
 
-        parts_with_idx.push_back({ part.data_part, part.part_index_in_query });
+        if (!read_in_pk_order)
+        {
+            parts_with_idx.push_back({ part.data_part, part.part_index_in_query });
+        } else 
+        {
+            this->parts.push_back({ part.data_part, part.part_index_in_query });
+        }
 
         if (predict_block_size_bytes)
         {

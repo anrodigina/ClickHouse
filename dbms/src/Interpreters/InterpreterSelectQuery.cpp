@@ -474,6 +474,7 @@ void InterpreterSelectQuery::executeImpl(Pipeline & pipeline, const BlockInputSt
     QueryProcessingStage::Enum from_stage = QueryProcessingStage::FetchColumns;
 
     /// PREWHERE optimization
+    SelectQueryInfo query_info;
     if (storage)
     {
         if (!dry_run)
@@ -483,7 +484,6 @@ void InterpreterSelectQuery::executeImpl(Pipeline & pipeline, const BlockInputSt
 
         auto optimize_prewhere = [&](auto & merge_tree)
         {
-            SelectQueryInfo query_info;
             query_info.query = query_ptr;
             query_info.syntax_analyzer_result = syntax_analyzer_result;
             query_info.sets = query_analyzer->getPreparedSets();
@@ -523,7 +523,7 @@ void InterpreterSelectQuery::executeImpl(Pipeline & pipeline, const BlockInputSt
             throw Exception("Distributed on Distributed is not supported", ErrorCodes::NOT_IMPLEMENTED);
 
         /** Read the data from Storage. from_stage - to what stage the request was completed in Storage. */
-        executeFetchColumns(from_stage, pipeline, expressions.prewhere_info, expressions.columns_to_remove_after_prewhere);
+        executeFetchColumns(from_stage, pipeline, expressions.prewhere_info, expressions.columns_to_remove_after_prewhere, query_info);
 
         LOG_TRACE(log, QueryProcessingStage::toString(from_stage) << " -> " << QueryProcessingStage::toString(to_stage));
     }
@@ -578,7 +578,7 @@ void InterpreterSelectQuery::executeImpl(Pipeline & pipeline, const BlockInputSt
             if (!expressions.second_stage && !expressions.need_aggregate && !expressions.has_having)
             {
                 if (expressions.has_order_by)
-                    executeOrder(pipeline);
+                    executePKOrder(pipeline, query_info);
 
                 if (expressions.has_order_by && query.limit_length)
                     executeDistinct(pipeline, false, expressions.selected_columns);
@@ -666,7 +666,7 @@ void InterpreterSelectQuery::executeImpl(Pipeline & pipeline, const BlockInputSt
                 if (!expressions.first_stage && !expressions.need_aggregate && !(query.group_by_with_totals && !aggregate_final))
                     executeMergeSorted(pipeline);
                 else    /// Otherwise, just sort.
-                    executeOrder(pipeline);
+                    executePKOrder(pipeline, query_info);
             }
 
             /** Optimization - if there are several sources and there is LIMIT, then first apply the preliminary LIMIT,
@@ -732,7 +732,8 @@ static void getLimitLengthAndOffset(ASTSelectQuery & query, size_t & length, siz
 
 void InterpreterSelectQuery::executeFetchColumns(
         QueryProcessingStage::Enum processing_stage, Pipeline & pipeline,
-        const PrewhereInfoPtr & prewhere_info, const Names & columns_to_remove_after_prewhere)
+        const PrewhereInfoPtr & prewhere_info, const Names & columns_to_remove_after_prewhere,
+        SelectQueryInfo& query_info)
 {
     const Settings & settings = context.getSettingsRef();
 
@@ -954,7 +955,6 @@ void InterpreterSelectQuery::executeFetchColumns(
         if (max_streams > 1 && !is_remote)
             max_streams *= settings.max_streams_to_max_threads_ratio;
 
-        SelectQueryInfo query_info;
         query_info.query = query_ptr;
         query_info.syntax_analyzer_result = syntax_analyzer_result;
         query_info.sets = query_analyzer->getPreparedSets();
@@ -1279,6 +1279,57 @@ void InterpreterSelectQuery::executeOrder(Pipeline & pipeline)
         settings.max_bytes_before_external_sort, context.getTemporaryPath());
 }
 
+void InterpreterSelectQuery::executePKOrder(Pipeline & pipeline, SelectQueryInfo& query_info)
+{
+    SortDescription order_descr = getSortDescription(query);
+
+    if (order_descr.empty()) 
+    {
+        return;
+    }
+
+    size_t limit = getLimitForSorting(query);
+
+    const Settings & settings = context.getSettingsRef();
+    const auto& order_direction = order_descr.at(0).direction;
+
+    bool need_sorting = true;
+    if (auto storage_merge_tree = dynamic_cast<StorageReplicatedMergeTree *>(storage.get()))
+    {
+        if (!query.group_expression_list) // TODO - check other conditions
+        {
+            const auto column_order_direction = storage_merge_tree->getData().getSortColumns();
+            for (size_t i = 0; i < min(column_order_direction.size(), order_descr.size()); ++i)
+            {
+ 
+            }
+        }    
+    }
+
+
+
+    pipeline.transform([&](auto & stream)
+    {
+        auto sorting_stream = std::make_shared<PartialSortingBlockInputStream>(stream, order_descr, limit);
+
+        /// Limits on sorting
+        IBlockInputStream::LocalLimits limits;
+        limits.mode = IBlockInputStream::LIMITS_TOTAL;
+        limits.size_limits = SizeLimits(settings.max_rows_to_sort, settings.max_bytes_to_sort, settings.sort_overflow_mode);
+        sorting_stream->setLimits(limits);
+
+        stream = sorting_stream;
+    });
+
+    /// If there are several streams, we merge them into one
+    executeUnion(pipeline);
+
+    /// Merge the sorted blocks.
+    pipeline.firstStream() = std::make_shared<MergeSortingBlockInputStream>(
+        pipeline.firstStream(), order_descr, settings.max_block_size, limit,
+        settings.max_bytes_before_remerge_sort,
+        settings.max_bytes_before_external_sort, context.getTemporaryPath());
+}
 
 void InterpreterSelectQuery::executeMergeSorted(Pipeline & pipeline)
 {

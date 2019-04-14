@@ -87,7 +87,7 @@ public:
 
 private:
     std::vector<size_t> fillPerPartInfo(
-        RangesInDataParts & parts, const bool check_columns);
+        RangesInDataParts & parts, const bool check_columns, const bool read_in_pk_order = false);
 
     void fillPerThreadInfo(
         const size_t threads, const size_t sum_marks, std::vector<size_t> per_part_sum_marks,

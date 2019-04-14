@@ -45,6 +45,8 @@ struct SelectQueryInfo
     /// Prepared sets are used for indices by storage engine.
     /// Example: x IN (1, 2, 3)
     PreparedSets sets;
+
+    bool do_not_steal_task = false;
 };
 
 }
