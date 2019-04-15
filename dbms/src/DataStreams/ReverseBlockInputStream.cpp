@@ -8,17 +8,17 @@ namespace DB
         children.push_back(input);
     }
 
-    String ReverseBlockInputStream::getName() const override
+    String ReverseBlockInputStream::getName() const
     {
         return "Reverse";
     }
 
-    Block ReverseBlockInputStream::getHeader() const override
+    Block ReverseBlockInputStream::getHeader() const
     {
         return children.at(0)->getHeader();
     }
 
-    Block ReverseBlockInputStream::readImpl() override
+    Block ReverseBlockInputStream::readImpl()
     {
         auto result_block = children.back()->read();
 
@@ -36,7 +36,7 @@ namespace DB
 
         for (auto iter = result_block.begin(); iter != result_block.end(); ++iter)
         {
-            iter->column = it->column->permute(permutation, 0);
+            iter->column = iter->column->permute(permutation, 0);
         }
 
         return result_block;

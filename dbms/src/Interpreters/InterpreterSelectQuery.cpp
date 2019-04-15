@@ -1279,7 +1279,7 @@ void InterpreterSelectQuery::executeOrder(Pipeline & pipeline)
         settings.max_bytes_before_external_sort, context.getTemporaryPath());
 }
 
-void InterpreterSelectQuery::executePKOrder(Pipeline & pipeline, SelectQueryInfo& query_info)
+void InterpreterSelectQuery::executePKOrder(Pipeline & pipeline, SelectQueryInfo& /*query_info*/)
 {
     SortDescription order_descr = getSortDescription(query);
 
@@ -1291,10 +1291,10 @@ void InterpreterSelectQuery::executePKOrder(Pipeline & pipeline, SelectQueryInfo
     size_t limit = getLimitForSorting(query);
 
     const Settings & settings = context.getSettingsRef();
-    const auto& order_direction = order_descr.at(0).direction;
+    // const auto& order_direction = order_descr.at(0).direction;
 
-    bool need_sorting = true;
-    if (auto storage_merge_tree = dynamic_cast<StorageReplicatedMergeTree *>(storage.get()))
+    // bool need_sorting = true;
+    /*if (auto storage_merge_tree = dynamic_cast<StorageReplicatedMergeTree *>(storage.get()))
     {
         if (!query.group_expression_list) // TODO - check other conditions
         {
@@ -1304,7 +1304,7 @@ void InterpreterSelectQuery::executePKOrder(Pipeline & pipeline, SelectQueryInfo
  
             }
         }    
-    }
+    }*/
 
 
 
@@ -1313,8 +1313,8 @@ void InterpreterSelectQuery::executePKOrder(Pipeline & pipeline, SelectQueryInfo
         auto sorting_stream = std::make_shared<PartialSortingBlockInputStream>(stream, order_descr, limit);
 
         /// Limits on sorting
-        IBlockInputStream::LocalLimits limits;
-        limits.mode = IBlockInputStream::LIMITS_TOTAL;
+        IProfilingBlockInputStream::LocalLimits limits;
+        limits.mode = IProfilingBlockInputStream::LIMITS_TOTAL;
         limits.size_limits = SizeLimits(settings.max_rows_to_sort, settings.max_bytes_to_sort, settings.sort_overflow_mode);
         sorting_stream->setLimits(limits);
 

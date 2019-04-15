@@ -614,7 +614,7 @@ BlockInputStreams MergeTreeDataSelectExecutor::spreadMarkRangesAmongStreams(
     const Names & virt_columns,
     const Settings & settings) const
 {
-    const PrewhereInfoPtr prewwhere_info = query_info.prewhere_info;
+    const PrewhereInfoPtr prewhere_info = query_info.prewhere_info;
     const size_t min_marks_for_concurrent_read =
         (settings.merge_tree_min_rows_for_concurrent_read + data.index_granularity - 1) / data.index_granularity;
     const size_t max_marks_to_use_cache =
