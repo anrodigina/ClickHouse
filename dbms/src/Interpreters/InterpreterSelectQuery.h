@@ -186,8 +186,7 @@ private:
     void executeTotalsAndHaving(Pipeline & pipeline, bool has_having, const ExpressionActionsPtr & expression, bool overflow_row, bool final);
     void executeHaving(Pipeline & pipeline, const ExpressionActionsPtr & expression);
     void executeExpression(Pipeline & pipeline, const ExpressionActionsPtr & expression);
-    void executeOrder(Pipeline & pipeline);
-    void executePKOrder(Pipeline & pipeline, SelectQueryInfo& query_info);
+    void executeOrder(Pipeline & pipeline, SelectQueryInfo& query_info);
     void executeMergeSorted(Pipeline & pipeline);
     void executePreLimit(Pipeline & pipeline);
     void executeUnion(Pipeline & pipeline);

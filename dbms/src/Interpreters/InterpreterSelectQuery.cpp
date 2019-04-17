@@ -579,7 +579,7 @@ void InterpreterSelectQuery::executeImpl(Pipeline & pipeline, const BlockInputSt
             if (!expressions.second_stage && !expressions.need_aggregate && !expressions.has_having)
             {
                 if (expressions.has_order_by)
-                    executePKOrder(pipeline, query_info);
+                    executeOrder(pipeline, query_info);
 
                 if (expressions.has_order_by && query.limit_length)
                     executeDistinct(pipeline, false, expressions.selected_columns);
@@ -667,7 +667,7 @@ void InterpreterSelectQuery::executeImpl(Pipeline & pipeline, const BlockInputSt
                 if (!expressions.first_stage && !expressions.need_aggregate && !(query.group_by_with_totals && !aggregate_final))
                     executeMergeSorted(pipeline);
                 else    /// Otherwise, just sort.
-                    executePKOrder(pipeline, query_info);
+                    executeOrder(pipeline, query_info);
             }
 
             /** Optimization - if there are several sources and there is LIMIT, then first apply the preliminary LIMIT,
@@ -1249,38 +1249,7 @@ static size_t getLimitForSorting(ASTSelectQuery & query)
     return limit;
 }
 
-
-void InterpreterSelectQuery::executeOrder(Pipeline & pipeline)
-{
-    SortDescription order_descr = getSortDescription(query);
-    size_t limit = getLimitForSorting(query);
-
-    const Settings & settings = context.getSettingsRef();
-
-    pipeline.transform([&](auto & stream)
-    {
-        auto sorting_stream = std::make_shared<PartialSortingBlockInputStream>(stream, order_descr, limit);
-
-        /// Limits on sorting
-        IProfilingBlockInputStream::LocalLimits limits;
-        limits.mode = IProfilingBlockInputStream::LIMITS_TOTAL;
-        limits.size_limits = SizeLimits(settings.max_rows_to_sort, settings.max_bytes_to_sort, settings.sort_overflow_mode);
-        sorting_stream->setLimits(limits);
-
-        stream = sorting_stream;
-    });
-
-    /// If there are several streams, we merge them into one
-    executeUnion(pipeline);
-
-    /// Merge the sorted blocks.
-    pipeline.firstStream() = std::make_shared<MergeSortingBlockInputStream>(
-        pipeline.firstStream(), order_descr, settings.max_block_size, limit,
-        settings.max_bytes_before_remerge_sort,
-        settings.max_bytes_before_external_sort, context.getTemporaryPath());
-}
-
-void InterpreterSelectQuery::executePKOrder(Pipeline & pipeline, SelectQueryInfo& query_info)
+void InterpreterSelectQuery::executeOrder(Pipeline & pipeline, SelectQueryInfo& query_info)
 {
     SortDescription order_descr = getSortDescription(query);
 
